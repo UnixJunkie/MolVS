@@ -26,6 +26,56 @@ log = logging.getLogger(__name__)
 FILETYPES = ['smi', 'mol', 'sdf']
 
 
+def RobustSmilesMolSupplier(filename):
+    with open(filename) as f:
+        for line in f:
+            words = line.split('\t')
+            smile = words[0]
+            name = words[1]
+            yield Chem.MolFromSmiles(smile), name
+
+
+# 'ascii' because this source code file is in utf-8 ?!
+name_prop = '_Name'.encode('ascii')
+
+
+def MySDMolSupplier(filename):
+    for mol in Chem.SDMolSupplier(filename):
+        name = mol.GetProp(name_prop)
+        yield mol, name
+
+
+def reader_of_file(fn):
+    if fn.endswith('.smi'):
+        return RobustSmilesMolSupplier(fn)
+    elif fn.endswith('.sdf'):
+        return MySDMolSupplier(fn)
+    else:
+        return None
+
+def write_smiles_out(out, mol, name):
+    out.write(Chem.MolToSmiles(mol))
+    if name != None:
+        if name.endswith('\n'):
+            out.write('\t%s' % name)
+        else:
+            out.write('\t%s\n' % name)
+
+
+def write_sdf_out(out, mol, name):
+    mol.SetProp(name_prop, name)
+    out.write(mol)
+
+
+def writer_of_file(fn):
+    if fn.endswith('.smi'):
+        return open(fn, 'w')
+    elif fn.endswith('.sdf'):
+        return Chem.SDWriter(fn)
+    else:
+        return None
+
+
 class MolvsParser(argparse.ArgumentParser):
 
     def error(self, message):
@@ -90,10 +140,27 @@ def _write_mol(mol, args):
 
 
 def standardize_main(args):
-    mol = _read_mol(args)
+    in_fn = args.infile.name
+    out_fn = args.outfile.name
+    reader = reader_of_file(in_fn)
+    writer = writer_of_file(out_fn)
     s = Standardizer()
-    mol = s.standardize(mol)
-    _write_mol(mol, args)
+    if (reader is not None) and (writer is not None):
+        smiles_out = out_fn.endswith('.smi')
+        sdf_out = out_fn.endswith('.sdf')
+        for mol, name in reader:
+            std = s.standardize(mol)
+            if smiles_out:
+                write_smiles_out(writer, std, name)
+            elif sdf_out:
+                write_sdf_out(writer, std, name)
+            else:
+                assert(False)
+        writer.close()
+    else:
+        mol = _read_mol(args)
+        mol = s.standardize(mol)
+        _write_mol(mol, args)
 
 
 def validate_main(args):
@@ -103,4 +170,3 @@ def validate_main(args):
     for log in logs:
         args.outfile.write(log)
         args.outfile.write('\n')
-
