@@ -63,7 +63,7 @@ def write_smiles_out(out, mol, name):
 
 
 def write_sdf_out(out, mol, name):
-    mol.SetProp(name_prop, name)
+    mol.SetProp(name_prop, name.encode('ascii'))
     out.write(mol)
 
 
